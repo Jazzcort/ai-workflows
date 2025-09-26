@@ -1,14 +1,15 @@
-from enum import StrEnum
-from functools import cache
 import logging
 import os
+from datetime import datetime, timezone
+from enum import StrEnum
+from functools import cache
 
 from bs4 import BeautifulSoup, Tag  # type: ignore
 from pydantic import BaseModel
 from requests_gssapi import HTTPSPNEGOAuth
 
 from .http_utils import requests_session
-from .supervisor_types import Erratum, ErrataStatus
+from .supervisor_types import ErrataStatus, Erratum
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,12 @@ def ET_verify() -> bool | str:
         return True
 
 
-def ET_api_get(path: str):
+def ET_api_get(path: str, param: dict[str, str] = {}):
     response = requests_session().get(
         f"{ET_URL}/api/v1/{path}",
         auth=HTTPSPNEGOAuth(opportunistic_auth=True),
         verify=ET_verify(),
+        params=param,
     )
     response.raise_for_status()
     return response.json()
@@ -85,6 +87,25 @@ def get_erratum(erratum_id: str | int):
         status=ErrataStatus(details["status"]),
         all_issues_release_pending=all_issues_release_pending,
     )
+
+
+def get_erratum_transition_timestamp(erratum_id: str | int, new_status: ErrataStatus):
+    data = ET_api_get(
+        "errata_activities",
+        {"filter[errata_id]": str(erratum_id), "filter[added]": new_status},
+    )
+
+    activities = data["data"]
+    timestamps = sorted(
+        [
+            datetime.strptime(
+                activity["attributes"]["created_at"], "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=timezone.utc)
+            for activity in activities
+        ]
+    )
+
+    return timestamps[-1] if len(timestamps) > 0 else None
 
 
 def get_erratum_for_link(link: str):

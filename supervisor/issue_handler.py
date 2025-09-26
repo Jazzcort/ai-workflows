@@ -1,8 +1,11 @@
 import logging
+from datetime import datetime, timedelta, timezone
 
-from .work_item_handler import WorkItemHandler
+from supervisor.errata_utils import get_erratum_transition_timestamp
+
 from .jira_utils import add_issue_label, change_issue_status
 from .supervisor_types import (
+    ErrataStatus,
     FullIssue,
     IssueStatus,
     PreliminaryTesting,
@@ -10,7 +13,7 @@ from .supervisor_types import (
     WorkflowResult,
 )
 from .testing_analyst import analyze_issue
-
+from .work_item_handler import WorkItemHandler
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,17 @@ class IssueHandler(WorkItemHandler):
                     "(The testing analysis agent returned an empty comment)",
                 )
             elif testing_analysis.state == TestingState.PENDING:
+                if issue.errata_link and (
+                    timestamp := get_erratum_transition_timestamp(
+                        issue.errata_link.split("/")[-1], ErrataStatus.QE
+                    )
+                ):
+                    now = datetime.now(timezone.utc)
+                    if now > timestamp + timedelta(hours=6):
+                        return self.resolve_flag_attention(
+                            "Tests haven't been run after moved to QE for 6 hours"
+                        )
+
                 return self.resolve_wait("Tests are pending")
             elif testing_analysis.state == TestingState.RUNNING:
                 return self.resolve_wait("Tests are running")
