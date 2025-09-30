@@ -11,6 +11,7 @@ from beeai_framework.template import PromptTemplate, PromptTemplateInput
 from agents.utils import get_agent_execution_config
 from .qe_data import get_qe_data, TestLocationInfo
 from .supervisor_types import FullIssue, TestingState
+from .tools.fetch_jira_issue import FetchJiraIssueTool
 from .tools.read_readme import ReadReadmeTool
 from .tools.search_resultsdb import SearchResultsdbTool
 
@@ -72,7 +73,7 @@ async def analyze_issue(jira_issue: FullIssue) -> OutputSchema:
             allow_parallel_tool_calls=True,
         ),
         memory=UnconstrainedMemory(),
-        tools=[ReadReadmeTool(), SearchResultsdbTool()],
+        tools=[ReadReadmeTool(), SearchResultsdbTool(), FetchJiraIssueTool()],
     )
 
     async def run(input: InputSchema):
