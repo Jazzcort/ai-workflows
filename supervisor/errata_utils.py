@@ -452,7 +452,9 @@ def _get_rel_prep_lookup(package_name: str) -> DefaultDict[str, list[Erratum]]:
     return rel_prep_lookup
 
 
-def get_previous_erratum(current_erratum_id: str | int, package_name: str):
+def get_previous_erratum(
+    current_erratum_id: str | int, package_name: str
+) -> tuple[int | str | None, str | None]:
     """Finds the previous erratum for a given package, starting from a specific erratum.
 
     RHEL releases inherit packages from previous releases, but only until they are shipped.
@@ -468,7 +470,8 @@ def get_previous_erratum(current_erratum_id: str | int, package_name: str):
         package_name: The name of the package for which to find the previous erratum.
 
     Returns:
-        The previous Erratum object, or None if one cannot be found.
+        A tuple of (previous Erratum id, build nvr). Both previous Erratum id and build nvr
+        could be None, please check their values before using.
     """
     erratum = get_erratum(current_erratum_id)
 
@@ -476,7 +479,7 @@ def get_previous_erratum(current_erratum_id: str | int, package_name: str):
     target_version = RHELVersion.from_str(target_release.version)
     if target_version is None:
         logger.info(f"Unknown RHEL release format: {target_release.version}")
-        return None
+        return (None, None)
 
     def is_previous_erratum_applicable(erratum_version: str, erratum: Erratum):
         if erratum_version == target_version:
@@ -505,16 +508,32 @@ def get_previous_erratum(current_erratum_id: str | int, package_name: str):
                 rel_prep,
                 key=lambda e: e.publish_date if e.publish_date else DATETIME_MIN_UTC,
             )
-            return latest_erratum
+
+            return (
+                latest_erratum.id,
+                get_erratum_build_nvr(latest_erratum.id, package_name),
+            )
 
         release = get_RHEL_release(str(cur_version))
         if release.shipped:
             released_build = ET_api_get(
                 f"product_versions/{release.version}/released_builds/{package_name}"
             )
-            return get_erratum(released_build["errata_id"])
+
+            erratum_id_from_released_build: int | str | None = released_build[
+                "errata_id"
+            ]
+            nvr = (
+                get_erratum_build_nvr(erratum_id_from_released_build, package_name)
+                if erratum_id_from_released_build is not None
+                else None
+            )
+
+            return (erratum_id_from_released_build, nvr)
 
         cur_version = cur_version.parent
+
+    return (None, None)
 
 
 def get_erratum_build_nvr(erratum_id: str | int, package_name: str) -> str | None:
